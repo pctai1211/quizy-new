@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ' *)",
+      "PowerShell(py -m pip install openpyxl --quiet 2>&1)",
+      "Bash(node -e \"console.log\\(process.version\\); console.log\\(typeof globalThis.crypto, typeof globalThis.crypto?.subtle\\)\")",
+      "Bash(node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(32\\).toString\\('base64url'\\)\\)\")",
+      "Bash(rm \"app/student/layout.tsx\" \"app/student/dashboard/page.tsx\")",
+      "Bash(rmdir \"app/student/dashboard\")",
+      "Bash(npx tsc *)",
+      "Bash(npx next *)",
+      "Bash(node -e ' *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/student/login --max-time 5)",
+      "Bash(netstat -ano)",
+      "Bash(npm run *)",
+      "Bash(tee /tmp/dev.log)",
+      "Read(//tmp/**)",
+      "Bash(curl -s http://localhost:3000/student/dashboard -o /dev/null -w \"%{http_code}\\\\n\" --max-time 10)",
+      "Bash(nohup npm run dev)",
+      "Bash(disown)",
+      "Bash(curl -s -o /dev/null -w \"login=%{http_code}\\\\n\" http://localhost:3000/student/login --max-time 8)",
+      "Bash(curl -s -o /dev/null -w \"dashboard=%{http_code}\\\\n\" http://localhost:3000/student/dashboard --max-time 15)",
+      "Bash(curl -s -o /dev/null -w \"root=%{http_code}\\\\n\" http://localhost:3000 --max-time 5)",
+      "Bash(rm -rf .next)",
+      "Bash(curl -s -o /dev/null -w \"root=%{http_code}\\\\n\" http://localhost:3000 --max-time 15)"
+    ]
+  }
+}
