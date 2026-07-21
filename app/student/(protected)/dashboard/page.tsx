@@ -33,8 +33,8 @@ export default async function StudentDashboardPage() {
       .order("active_until", { ascending: true }),
     supabase
       .from("submissions")
-      .select("id, score, total_points, percentage, submitted_at, quizzes(title)")
-      .eq("email", student.email)
+      .select("id, quiz_id, score, total_points, percentage, submitted_at, quizzes(title)")
+      .ilike("email", student.email)
       .order("submitted_at", { ascending: false }),
   ]);
 
@@ -47,6 +47,11 @@ export default async function StudentDashboardPage() {
     quiz_title: Array.isArray(row.quizzes) ? row.quizzes[0]?.title ?? "Quiz" : (row.quizzes as { title: string } | null)?.title ?? "Quiz",
   }));
 
+  // Already-completed quizzes just redirect to the result (see
+  // app/quiz/[id]/page.tsx), so leave them out of "active now" here too.
+  const completedQuizIds = new Set((submissions ?? []).map((row) => row.quiz_id));
+  const startableQuizzes = (activeQuizzes ?? []).filter((quiz) => !completedQuizIds.has(quiz.id));
+
   return (
     <div className="space-y-10">
       <div>
@@ -56,9 +61,9 @@ export default async function StudentDashboardPage() {
 
       <section>
         <h2 className="text-sm font-semibold text-foreground">Active now</h2>
-        {activeQuizzes && activeQuizzes.length > 0 ? (
+        {startableQuizzes.length > 0 ? (
           <div className="mt-3 space-y-3">
-            {activeQuizzes.map((quiz) => (
+            {startableQuizzes.map((quiz) => (
               <div
                 key={quiz.id}
                 className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-4"

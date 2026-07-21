@@ -105,6 +105,15 @@ export function QuizRunner({ quiz, student }: QuizRunnerProps) {
       });
 
       const data = await res.json();
+
+      // Already submitted (e.g. a second tab, or resuming after submitting
+      // elsewhere) — send them to their existing result instead of erroring.
+      if (res.status === 409 && data.submissionId) {
+        window.localStorage.removeItem(storageKey(quiz.id));
+        router.push(`/result/${data.submissionId}`);
+        return;
+      }
+
       if (!res.ok) throw new Error(data.error ?? "Submission failed");
 
       window.localStorage.removeItem(storageKey(quiz.id));

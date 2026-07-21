@@ -46,6 +46,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Your batch isn't allowed to take this quiz" }, { status: 403 });
   }
 
+  // One attempt per student per quiz — also enforced by a unique index
+  // (quiz_id, lower(email)) in 0007_one_submission_per_student.sql, which
+  // is what actually protects against a race between this check and the
+  // insert below.
+  const { data: existing } = await supabase
+    .from("submissions")
+    .select("id")
+    .eq("quiz_id", quiz_id)
+    .ilike("email", student.email)
+    .maybeSingle();
+
+  if (existing) {
+    return NextResponse.json(
+      { error: "You've already submitted this quiz.", submissionId: existing.id },
+      { status: 409 }
+    );
+  }
+
   const { data: questions, error: questionsError } = await supabase
     .from("questions")
     .select("id, correct_answer, correct_answers, question_type, points, question_options(option_text)")
@@ -107,6 +125,20 @@ export async function POST(request: Request) {
     .single();
 
   if (submissionError || !submission) {
+    // 23505 = unique_violation: lost the race against another request for
+    // the same student+quiz. Treat it the same as the pre-check above.
+    if (submissionError?.code === "23505") {
+      const { data: raceWinner } = await supabase
+        .from("submissions")
+        .select("id")
+        .eq("quiz_id", quiz_id)
+        .ilike("email", student.email)
+        .maybeSingle();
+      return NextResponse.json(
+        { error: "You've already submitted this quiz.", submissionId: raceWinner?.id },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ error: "Unable to save submission" }, { status: 500 });
   }
 

@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { QuizRunner } from "@/components/quiz/quiz-runner";
 import { getCurrentStudent } from "@/lib/students-server";
@@ -30,6 +30,19 @@ export default async function PublicQuizPage({
     .single();
 
   if (!quiz || !quiz.published) notFound();
+
+  // Already took this quiz — send them to their result instead of letting
+  // them start (and lose) a second attempt (also enforced in /api/submit).
+  const { data: existingSubmission } = await supabase
+    .from("submissions")
+    .select("id")
+    .eq("quiz_id", id)
+    .ilike("email", student.email)
+    .maybeSingle();
+
+  if (existingSubmission) {
+    redirect(`/result/${existingSubmission.id}`);
+  }
 
   if (!isQuizLive(quiz, student.batch_name)) {
     return (
