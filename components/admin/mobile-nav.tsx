@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 const links = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutGrid },
   { href: "/admin/quizzes", label: "Quizzes", icon: ListChecks },
-  { href: "/admin/batches", label: "Batches", icon: Layers },
+  { href: "/admin/classes", label: "Classes", icon: Layers },
   { href: "/admin/students", label: "Students", icon: GraduationCap },
   { href: "/admin/results", label: "Results", icon: BarChart3 },
 ];

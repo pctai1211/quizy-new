@@ -11,83 +11,123 @@ import type { PublicQuiz, QuizAnswerState } from "@/lib/types";
 
 interface QuizRunnerProps {
   quiz: PublicQuiz;
-  student: { name: string; email: string; batch_name: string };
-}
-
-interface StoredState {
-  answers: QuizAnswerState;
-  currentIndex: number;
-  startedAt: number;
+  student: { name: string; email: string; class_label: string };
+  existingAttempt?: {
+    id: string;
+    startedAt: string;
+    answers: QuizAnswerState;
+  } | null;
+  isPreview?: boolean; // thêm dòng này
+  exitHref?: string; // nơi quay về khi admin thoát preview
 }
 
 function storageKey(quizId: string) {
-  return `quizy:${quizId}`;
+  return `quizy:${quizId}:cursor`;
 }
 
-export function QuizRunner({ quiz, student }: QuizRunnerProps) {
+export function QuizRunner({
+  quiz,
+  student,
+  existingAttempt,
+  isPreview = false,
+  exitHref,
+}: QuizRunnerProps) {
   const router = useRouter();
-  const [phase, setPhase] = useState<"intro" | "active" | "submitting">("intro");
-  const [answers, setAnswers] = useState<QuizAnswerState>({});
+  const [phase, setPhase] = useState<"intro" | "active" | "submitting">(
+    isPreview ? "active" : existingAttempt ? "active" : "intro"
+  );
+  const [attemptId, setAttemptId] = useState<string | null>(existingAttempt?.id ?? null);
+  const [answers, setAnswers] = useState<QuizAnswerState>(existingAttempt?.answers ?? {});
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [startedAt, setStartedAt] = useState<number | null>(
+    existingAttempt ? new Date(existingAttempt.startedAt).getTime() : null
+  );
   const [error, setError] = useState<string | null>(null);
   const submittedRef = useRef(false);
+  const saveTimer = useRef<number | null>(null);
 
-  const durationSeconds = quiz.duration_minutes * 60;
+  const hasTimer = !isPreview && (quiz.duration_minutes ?? 0) > 0;
+  const durationSeconds = (quiz.duration_minutes ?? 0) * 60;
 
-  // Restore progress from localStorage on mount.
   useEffect(() => {
+    if (isPreview) return;
     try {
       const raw = window.localStorage.getItem(storageKey(quiz.id));
       if (raw) {
-        const parsed: StoredState = JSON.parse(raw);
-        setAnswers(parsed.answers);
-        setCurrentIndex(parsed.currentIndex);
-        setStartedAt(parsed.startedAt);
-        setPhase("active");
+        const parsed = JSON.parse(raw) as { currentIndex?: number };
+        if (typeof parsed.currentIndex === "number") {
+          setCurrentIndex(parsed.currentIndex);
+        }
       }
     } catch {
       // Ignore malformed local storage state.
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [quiz.id, isPreview]);
 
-  const persist = useCallback(
-    (next: Partial<StoredState>) => {
-      if (!startedAt && !next.startedAt) return;
-      const state: StoredState = {
-        answers: next.answers ?? answers,
-        currentIndex: next.currentIndex ?? currentIndex,
-        startedAt: next.startedAt ?? startedAt ?? Date.now(),
-      };
-      window.localStorage.setItem(storageKey(quiz.id), JSON.stringify(state));
+  const persistCursor = (index: number) => {
+    if (isPreview) return;
+    window.localStorage.setItem(storageKey(quiz.id), JSON.stringify({ currentIndex: index }));
+  };
+
+  const saveDraft = useCallback(
+    (nextAnswers: QuizAnswerState, id: string) => {
+      if (isPreview) return; // không lưu draft khi preview
+      if (saveTimer.current) window.clearTimeout(saveTimer.current);
+      saveTimer.current = window.setTimeout(() => {
+        void fetch("/api/attempts/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            attempt_id: id,
+            answers: quiz.questions.map((question) => ({
+              question_id: question.id,
+              answer: nextAnswers[question.id] ?? "",
+            })),
+          }),
+        });
+      }, 800);
     },
-    [quiz.id, answers, currentIndex, startedAt]
+    [quiz.questions, isPreview]
   );
 
-  const handleStart = () => {
-    const now = Date.now();
-    setStartedAt(now);
-    setPhase("active");
-    window.localStorage.setItem(
-      storageKey(quiz.id),
-      JSON.stringify({ answers: {}, currentIndex: 0, startedAt: now })
-    );
+  const handleStart = async () => {
+    setError(null);
+    try {
+      const res = await fetch("/api/attempts/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quiz_id: quiz.id }),
+      });
+      const data = await res.json();
+      if (res.status === 409 && data.attemptId) {
+        router.push(`/result/${data.attemptId}`);
+        return;
+      }
+      if (!res.ok) throw new Error(data.error ?? "Unable to start quiz");
+
+      setAttemptId(data.attemptId as string);
+      setStartedAt(new Date(data.startedAt as string).getTime());
+      setAnswers((data.answers as QuizAnswerState) ?? {});
+      setPhase("active");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to start quiz");
+    }
   };
 
   const handleAnswerChange = (questionId: string, value: string | string[]) => {
     const next = { ...answers, [questionId]: value };
     setAnswers(next);
-    persist({ answers: next });
+    if (attemptId) saveDraft(next, attemptId);
   };
 
   const goTo = (index: number) => {
     setCurrentIndex(index);
-    persist({ currentIndex: index });
+    persistCursor(index);
   };
 
   const submitQuiz = useCallback(async () => {
-    if (submittedRef.current || !startedAt) return;
+    if (isPreview) return; // an toàn tuyệt đối: preview không bao giờ submit
+    if (submittedRef.current) return;
     submittedRef.current = true;
     setPhase("submitting");
 
@@ -97,6 +137,7 @@ export function QuizRunner({ quiz, student }: QuizRunnerProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           quiz_id: quiz.id,
+          attempt_id: attemptId,
           answers: quiz.questions.map((q) => ({
             question_id: q.id,
             answer: answers[q.id] ?? "",
@@ -105,31 +146,51 @@ export function QuizRunner({ quiz, student }: QuizRunnerProps) {
       });
 
       const data = await res.json();
+      const resultId = data.attemptId as string | undefined;
 
-      // Already submitted (e.g. a second tab, or resuming after submitting
-      // elsewhere) — send them to their existing result instead of erroring.
-      if (res.status === 409 && data.submissionId) {
+      if (res.status === 409 && resultId) {
         window.localStorage.removeItem(storageKey(quiz.id));
-        router.push(`/result/${data.submissionId}`);
+        router.push(`/result/${resultId}`);
         return;
       }
 
       if (!res.ok) throw new Error(data.error ?? "Submission failed");
 
       window.localStorage.removeItem(storageKey(quiz.id));
-      router.push(`/result/${data.submissionId}`);
+      router.push(`/result/${resultId}`);
     } catch (err) {
       submittedRef.current = false;
       setPhase("active");
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     }
-  }, [startedAt, quiz.id, quiz.questions, answers, router]);
+  }, [attemptId, quiz.id, quiz.questions, answers, router, isPreview]);
 
   const initialSeconds = useMemo(() => {
     if (!startedAt) return durationSeconds;
     const elapsed = Math.floor((Date.now() - startedAt) / 1000);
     return Math.max(0, durationSeconds - elapsed);
   }, [startedAt, durationSeconds]);
+
+  useEffect(() => {
+    if (
+      !isPreview &&
+      phase === "active" &&
+      hasTimer &&
+      startedAt &&
+      initialSeconds === 0 &&
+      !submittedRef.current
+    ) {
+      void submitQuiz();
+    }
+  }, [phase, hasTimer, startedAt, initialSeconds, submitQuiz, isPreview]);
+
+  const handleExitPreview = () => {
+    if (exitHref) {
+      router.push(exitHref);
+    } else {
+      router.back();
+    }
+  };
 
   if (phase === "intro") {
     return (
@@ -145,10 +206,12 @@ export function QuizRunner({ quiz, student }: QuizRunnerProps) {
             {quiz.description && <p className="mt-2 text-sm text-muted">{quiz.description}</p>}
 
             <div className="mt-5 flex flex-wrap gap-2">
-              <span className="flex items-center gap-1.5 rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-foreground">
-                <Clock className="h-3.5 w-3.5" />
-                {formatDuration(quiz.duration_minutes)}
-              </span>
+              {hasTimer && (
+                <span className="flex items-center gap-1.5 rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-foreground">
+                  <Clock className="h-3.5 w-3.5" />
+                  {formatDuration(quiz.duration_minutes)}
+                </span>
+              )}
               <span className="flex items-center gap-1.5 rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-foreground">
                 <ListChecks className="h-3.5 w-3.5" />
                 {quiz.questions.length} question{quiz.questions.length === 1 ? "" : "s"}
@@ -156,8 +219,10 @@ export function QuizRunner({ quiz, student }: QuizRunnerProps) {
             </div>
 
             <p className="mt-5 text-xs text-muted">
-              Submitting as {student.name} ({student.email}) · {student.batch_name}
+              Submitting as {student.name} ({student.email}) · {student.class_label}
             </p>
+
+            {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
 
             <Button className="mt-6 w-full" size="lg" onClick={handleStart}>
               Start Quiz
@@ -176,12 +241,16 @@ export function QuizRunner({ quiz, student }: QuizRunnerProps) {
     <div className="flex min-h-screen flex-col bg-white">
       <header className="sticky top-0 z-20 border-b border-border bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-[768px] items-center justify-between px-6 py-4">
-          <span className="text-base font-semibold tracking-tight text-foreground">QUIZY</span>
-          {startedAt && (
-            <QuizTimer
-              initialSeconds={initialSeconds}
-              onExpire={submitQuiz}
-            />
+          <div className="flex items-center gap-2">
+            <span className="text-base font-semibold tracking-tight text-foreground">QUIZY</span>
+            {isPreview && (
+              <span className="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                Preview mode
+              </span>
+            )}
+          </div>
+          {startedAt && hasTimer && (
+            <QuizTimer initialSeconds={initialSeconds} onExpire={submitQuiz} />
           )}
         </div>
         <div className="mx-auto max-w-[768px] px-6 pb-3">
@@ -220,7 +289,16 @@ export function QuizRunner({ quiz, student }: QuizRunnerProps) {
             Previous
           </Button>
 
-          {isLast ? (
+          {isPreview ? (
+            isLast ? (
+              <Button onClick={handleExitPreview}>Exit preview</Button>
+            ) : (
+              <Button onClick={() => goTo(currentIndex + 1)}>
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            )
+          ) : isLast ? (
             <Button onClick={submitQuiz} disabled={phase === "submitting"}>
               {phase === "submitting" ? "Submitting..." : "Submit"}
             </Button>

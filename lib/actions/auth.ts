@@ -15,30 +15,57 @@ export async function login(formData: FormData): Promise<LoginResult> {
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return {
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+    };
   }
 
   const supabase = await createClient();
+
   const { data, error } = await supabase.auth.signInWithPassword({
     email: parsed.data.email,
     password: parsed.data.password,
   });
 
-  if (error) {
-    return { error: "Invalid email or password" };
+  if (error || !data.user) {
+    return {
+      error: "Invalid email or password",
+    };
   }
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("role")
     .eq("id", data.user.id)
     .single();
 
-  redirect(profile?.role === "student" ? "/student/dashboard" : "/admin/dashboard");
+  if (profileError || !profile) {
+    await supabase.auth.signOut();
+
+    return {
+      error: "Your account is not configured correctly. Please contact an administrator.",
+    };
+  }
+
+  if (profile.role === "admin") {
+    redirect("/admin/dashboard");
+  }
+
+  if (profile.role === "student") {
+    redirect("/student/dashboard");
+  }
+
+  await supabase.auth.signOut();
+
+  return {
+    error: "Your account does not have a valid role.",
+  };
 }
 
 export async function logout(): Promise<void> {
   const supabase = await createClient();
+
   await supabase.auth.signOut();
+
   redirect("/login");
 }

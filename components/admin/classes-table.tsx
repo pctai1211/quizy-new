@@ -22,31 +22,31 @@ import {
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/admin/empty-state";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
-import { BatchForm } from "@/components/admin/batch-form";
-import { createBatch, updateBatch, deleteBatch } from "@/lib/actions/batches";
+import { ClassForm } from "@/components/admin/class-form";
+import { createClass, updateClass, deleteClass } from "@/lib/actions/classes";
 import { formatDate } from "@/lib/utils";
-import type { Batch } from "@/lib/types";
+import type { Class } from "@/lib/types";
 
-export function BatchesTable({ batches }: { batches: Batch[] }) {
+export function ClassesTable({ classes }: { classes: Class[] }) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
-  const [editing, setEditing] = useState<Batch | null>(null);
+  const [editing, setEditing] = useState<Class | null>(null);
 
   return (
     <div>
       <div className="mb-6 flex justify-end">
         <Button onClick={() => setCreateOpen(true)}>
           <Plus className="h-4 w-4" />
-          New batch
+          New class
         </Button>
       </div>
 
-      {batches.length === 0 ? (
+      {classes.length === 0 ? (
         <EmptyState
           icon={Layers}
-          title="No batches yet"
-          description="Create a batch to group quizzes and students, like a cohort or class."
-          action={<Button onClick={() => setCreateOpen(true)}>Create batch</Button>}
+          title="No classes yet"
+          description="Create a class so students can belong to one or more cohorts."
+          action={<Button onClick={() => setCreateOpen(true)}>Create class</Button>}
         />
       ) : (
         <div className="rounded-lg border border-border">
@@ -61,21 +61,21 @@ export function BatchesTable({ batches }: { batches: Batch[] }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {batches.map((batch) => (
-                <TableRow key={batch.id}>
-                  <TableCell className="font-medium">{batch.name}</TableCell>
+              {classes.map((classItem) => (
+                <TableRow key={classItem.id}>
+                  <TableCell className="font-medium">{classItem.name}</TableCell>
                   <TableCell className="max-w-xs truncate text-muted">
-                    {batch.description || "—"}
+                    {classItem.description || "—"}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={batch.active ? "success" : "muted"}>
-                      {batch.active ? "Active" : "Inactive"}
+                    <Badge variant={classItem.active ? "success" : "muted"}>
+                      {classItem.active ? "Active" : "Inactive"}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-muted">{formatDate(batch.created_at)}</TableCell>
+                  <TableCell className="text-muted">{formatDate(classItem.created_at)}</TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => setEditing(batch)}>
+                      <Button variant="ghost" size="icon" onClick={() => setEditing(classItem)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <ConfirmDialog
@@ -84,10 +84,10 @@ export function BatchesTable({ batches }: { batches: Batch[] }) {
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         }
-                        title="Delete batch"
-                        description={`This will permanently delete "${batch.name}". Quizzes linked to it will lose their batch reference.`}
+                        title="Delete class"
+                        description={`This will permanently delete "${classItem.name}" and remove its student memberships.`}
                         onConfirm={async () => {
-                          await deleteBatch(batch.id);
+                          await deleteClass(classItem.id);
                           router.refresh();
                         }}
                       />
@@ -103,11 +103,13 @@ export function BatchesTable({ batches }: { batches: Batch[] }) {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New batch</DialogTitle>
-            <DialogDescription>Group quizzes and students under a cohort.</DialogDescription>
+            <DialogTitle>New class</DialogTitle>
+            <DialogDescription>
+              Students can join multiple classes. Quizzes can be assigned per class later.
+            </DialogDescription>
           </DialogHeader>
-          <BatchForm
-            onSubmit={createBatch}
+          <ClassForm
+            onSubmit={createClass}
             onSuccess={() => {
               setCreateOpen(false);
               router.refresh();
@@ -119,13 +121,13 @@ export function BatchesTable({ batches }: { batches: Batch[] }) {
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit batch</DialogTitle>
-            <DialogDescription>Update this batch&apos;s details.</DialogDescription>
+            <DialogTitle>Edit class</DialogTitle>
+            <DialogDescription>Update this class&apos;s details.</DialogDescription>
           </DialogHeader>
           {editing && (
-            <BatchForm
-              batch={editing}
-              onSubmit={(formData) => updateBatch(editing.id, formData)}
+            <ClassForm
+              classItem={editing}
+              onSubmit={(formData) => updateClass(editing.id, formData)}
               onSuccess={() => {
                 setEditing(null);
                 router.refresh();

@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Search, Download, ChevronLeft, ChevronRight, BarChart3 } from "lucide-react";
+import { Search, Download, ChevronLeft, ChevronRight, BarChart3, Eye } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,12 +24,12 @@ import {
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/admin/empty-state";
 import { formatDate } from "@/lib/utils";
-import type { Batch, Quiz, SubmissionWithQuiz } from "@/lib/types";
+import type { AttemptWithQuiz, Class, Quiz } from "@/lib/types";
 
 interface ResultsExplorerProps {
-  submissions: SubmissionWithQuiz[];
+  attempts: AttemptWithQuiz[];
   quizzes: Quiz[];
-  batches: Batch[];
+  classes: Class[];
   total: number;
   page: number;
   pageSize: number;
@@ -37,9 +38,9 @@ interface ResultsExplorerProps {
 const ALL = "__all__";
 
 export function ResultsExplorer({
-  submissions,
+  attempts,
   quizzes,
-  batches,
+  classes,
   total,
   page,
   pageSize,
@@ -71,9 +72,9 @@ export function ResultsExplorer({
   const exportHref = (() => {
     const params = new URLSearchParams();
     const quizId = searchParams.get("quiz");
-    const batchName = searchParams.get("batch");
+    const classId = searchParams.get("class");
     if (quizId) params.set("quiz_id", quizId);
-    if (batchName) params.set("batch_name", batchName);
+    if (classId) params.set("class_id", classId);
     return `/api/export?${params.toString()}`;
   })();
 
@@ -113,17 +114,17 @@ export function ResultsExplorer({
           </Select>
 
           <Select
-            value={searchParams.get("batch") ?? ALL}
-            onValueChange={(value) => updateParams({ batch: value })}
+            value={searchParams.get("class") ?? ALL}
+            onValueChange={(value) => updateParams({ class: value })}
           >
             <SelectTrigger className="sm:w-48">
-              <SelectValue placeholder="All batches" />
+              <SelectValue placeholder="All classes" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={ALL}>All batches</SelectItem>
-              {batches.map((batch) => (
-                <SelectItem key={batch.id} value={batch.name}>
-                  {batch.name}
+              <SelectItem value={ALL}>All classes</SelectItem>
+              {classes.map((cls) => (
+                <SelectItem key={cls.id} value={cls.id}>
+                  {cls.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -138,7 +139,7 @@ export function ResultsExplorer({
         </Button>
       </div>
 
-      {submissions.length === 0 ? (
+      {attempts.length === 0 ? (
         <EmptyState
           icon={BarChart3}
           title="No results found"
@@ -152,19 +153,24 @@ export function ResultsExplorer({
                 <TableRow>
                   <TableHead>Student</TableHead>
                   <TableHead>Email</TableHead>
-                  <TableHead>Batch</TableHead>
+                  <TableHead>Classes</TableHead>
                   <TableHead>Quiz</TableHead>
                   <TableHead>Score</TableHead>
                   <TableHead>Percentage</TableHead>
                   <TableHead>Submitted</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {submissions.map((row) => (
+                {attempts.map((row) => (
                   <TableRow key={row.id}>
-                    <TableCell className="font-medium">{row.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <Link href={`/result/${row.id}`}>
+                        {row.name}
+                      </Link>
+                    </TableCell>
                     <TableCell className="text-muted">{row.email}</TableCell>
-                    <TableCell className="text-muted">{row.batch_name}</TableCell>
+                    <TableCell className="text-muted">{row.class_names || "—"}</TableCell>
                     <TableCell className="text-muted">{row.quiz_title}</TableCell>
                     <TableCell>
                       {row.score}/{row.total_points}
@@ -174,7 +180,17 @@ export function ResultsExplorer({
                         {row.percentage}%
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-muted">{formatDate(row.submitted_at)}</TableCell>
+                    <TableCell className="text-muted">
+                      {row.submitted_at ? formatDate(row.submitted_at) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="secondary" size="sm" asChild>
+                        <Link href={`/result/${row.id}`}>
+                          <Eye className="h-4 w-4" />
+                          View
+                        </Link>
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

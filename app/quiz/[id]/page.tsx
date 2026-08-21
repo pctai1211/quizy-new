@@ -1,84 +1,173 @@
 import { notFound, redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { QuizRunner } from "@/components/quiz/quiz-runner";
 import { getCurrentStudent } from "@/lib/students-server";
-import { isQuizLive } from "@/lib/utils";
-import type { PublicQuestion, PublicQuiz } from "@/lib/types";
+import { fetchStudentAssignmentRows } from "@/lib/student-assignments";
+import { canTakeAssignedQuiz } from "@/lib/quiz-access";
+import { answersToState, countUsedAttempts } from "@/lib/attempts";
+import type { PublicQuestion, PublicQuiz, QuizAnswerState } from "@/lib/types";
 
-// Reads are done with the service-role client on the server (students
-// never hold a Supabase Auth session, so there's no RLS context for them).
-// This route never selects the `correct_answer` column, so answers can't
-// leak to the client. Access itself is still gated: middleware.ts requires
-// a logged-in student, and below we additionally require the quiz to be
-// currently activated for that student's own batch.
-export default async function PublicQuizPage({
+export default async function QuizPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
 
-  const student = await getCurrentStudent();
-  if (!student) notFound();
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const supabase = createAdminClient();
+  if (!user) notFound();
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, role, first_name, last_name, email")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (!profile) notFound();
+
+  const isAdmin = profile.role === "admin" || profile.role === "teacher";
+
+  const student = await getCurrentStudent();
+  if (!student && !isAdmin) notFound();
 
   const { data: quiz } = await supabase
     .from("quizzes")
-    .select("id, title, description, duration_minutes, published, published_batches, active_batches, active_until")
+    .select("id, title, description, duration_minutes, status, is_public, max_attempts")
     .eq("id", id)
+    .eq("status", "published")
     .single();
 
-  if (!quiz || !quiz.published) notFound();
+  if (!quiz) notFound();
 
-  // Already took this quiz — send them to their result instead of letting
-  // them start (and lose) a second attempt (also enforced in /api/submit).
-  const { data: existingSubmission } = await supabase
-    .from("submissions")
-    .select("id")
-    .eq("quiz_id", id)
-    .ilike("email", student.email)
-    .maybeSingle();
+  if (isAdmin && !student) {
+    const admin = createAdminClient();
+    const { data: questionRows } = await admin
+      .from("questions")
+      .select("id, question, type, points, sort_order, options:question_options(id, option_text, sort_order)")
+      .eq("quiz_id", id)
+      .order("sort_order", { ascending: true });
 
-  if (existingSubmission) {
-    redirect(`/result/${existingSubmission.id}`);
+    const questions: PublicQuestion[] = ((questionRows as PublicQuestion[] | null) ?? []).map(
+      (question) => ({
+        ...question,
+        options: [...(question.options ?? [])].sort((a, b) => a.sort_order - b.sort_order),
+      })
+    );
+
+    const publicQuiz: PublicQuiz = {
+      id: quiz.id,
+      title: quiz.title,
+      description: quiz.description,
+      duration_minutes: quiz.duration_minutes,
+      questions,
+    };
+
+    return (
+      <QuizRunner
+        quiz={publicQuiz}
+        student={{
+          name: `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || "Admin",
+          email: profile.email ?? "",
+          class_label: "Admin preview",
+        }}
+        existingAttempt={null}
+        isPreview
+        exitHref={`/admin/quizzes/${quiz.id}`} // sửa lại đúng route quản lý quiz của bạn
+      />
+    );
   }
 
-  if (!isQuizLive(quiz, student.batch_name)) {
+  // Từ đây trở xuống giữ nguyên logic cũ dành cho student
+  const [assignments, { data: attempts }] = await Promise.all([
+    fetchStudentAssignmentRows(supabase, student!, id),
+    supabase
+      .from("quiz_attempts")
+      .select("id, status, attempt_number, started_at")
+      .eq("quiz_id", id)
+      .eq("student_id", student!.id)
+      .order("attempt_number", { ascending: false }),
+  ]);
+
+  const inProgress = (attempts ?? []).find((row) => row.status === "in_progress");
+  const finished = (attempts ?? []).filter(
+    (row) => row.status === "submitted" || row.status === "graded"
+  );
+
+  if (!inProgress && countUsedAttempts(attempts ?? []) >= quiz.max_attempts && finished[0]) {
+    redirect(`/result/${finished[0].id}`);
+  }
+
+  if (!inProgress && !canTakeAssignedQuiz(assignments, quiz.is_public)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white px-6 text-center">
         <div>
           <h1 className="text-lg font-semibold text-foreground">This quiz isn&apos;t open right now</h1>
           <p className="mt-2 text-sm text-muted">
-            Your admin activates each quiz for a 30-minute window. Check back once it&apos;s live, or ask
-            your admin when it&apos;ll open.
+            It may not be assigned to you, not in its availability window yet, or the due time has
+            passed. Check with your admin if you think this is a mistake.
           </p>
         </div>
       </div>
     );
   }
 
-  const { data: questions } = await supabase
+  const admin = createAdminClient();
+  const { data: questionRows, error } = await admin
     .from("questions")
-    .select("id, question_text, question_type, points, sort_order, options:question_options(id, option_text, sort_order)")
+    .select("id, question, type, points, sort_order, options:question_options(id, option_text, sort_order)")
     .eq("quiz_id", id)
     .order("sort_order", { ascending: true });
+  console.log(error)
+
+  const questions: PublicQuestion[] = ((questionRows as PublicQuestion[] | null) ?? []).map(
+    (question) => ({
+      ...question,
+      options: [...(question.options ?? [])].sort((a, b) => a.sort_order - b.sort_order),
+    })
+  );
 
   const publicQuiz: PublicQuiz = {
     id: quiz.id,
     title: quiz.title,
     description: quiz.description,
     duration_minutes: quiz.duration_minutes,
-    questions: ((questions as PublicQuestion[]) ?? []).map((q) => ({
-      ...q,
-      options: (q.options ?? []).slice().sort((a, b) => a.sort_order - b.sort_order),
-    })),
+    questions,
   };
+
+  let initialAnswers: QuizAnswerState = {};
+  if (inProgress) {
+    const { data: saved } = await admin
+      .from("attempt_answers")
+      .select("question_id, selected_option_ids, text_answer")
+      .eq("attempt_id", inProgress.id);
+    initialAnswers = answersToState(saved ?? []);
+  }
+
+  const classLabel =
+    student!.classes.length > 0 ? student!.classes.map((cls) => cls.name).join(", ") : "No class";
 
   return (
     <QuizRunner
       quiz={publicQuiz}
-      student={{ name: student.name, email: student.email, batch_name: student.batch_name }}
+      student={{
+        name: student!.name,
+        email: student!.email,
+        class_label: classLabel,
+      }}
+      existingAttempt={
+        inProgress
+          ? {
+            id: inProgress.id,
+            startedAt: inProgress.started_at,
+            answers: initialAnswers,
+          }
+          : null
+      }
     />
   );
 }

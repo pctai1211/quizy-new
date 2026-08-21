@@ -18,19 +18,35 @@ import { QuestionForm } from "@/components/admin/question-form";
 import { deleteQuestion } from "@/lib/actions/questions";
 import type { Question } from "@/lib/types";
 
-export function QuestionBuilder({ quizId, questions }: { quizId: string; questions: Question[] }) {
+const TYPE_LABELS: Record<string, string> = {
+  single_choice: "Single Choice",
+  multiple_choice: "Multiple Choice",
+  short_answer: "Short Answer",
+  open_ended: "Open Ended",
+};
+
+export function QuestionBuilder({
+  quizId,
+  questions,
+}: {
+  quizId: string;
+  questions: Question[];
+}) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Question | null>(null);
 
   const sorted = [...questions].sort((a, b) => a.sort_order - b.sort_order);
+  const autoGradedPoints = sorted
+    .filter((q) => q.type !== "open_ended")
+    .reduce((sum, q) => sum + Number(q.points), 0);
 
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <p className="text-sm text-muted">
-          {sorted.length} question{sorted.length === 1 ? "" : "s"} ·{" "}
-          {sorted.filter((q) => q.question_type !== "short_answer" && q.question_type !== "open_ended").reduce((sum, q) => sum + q.points, 0)} auto-graded points
+          {sorted.length} question{sorted.length === 1 ? "" : "s"} · {autoGradedPoints}{" "}
+          auto-graded points
         </p>
         <Button onClick={() => setCreateOpen(true)}>
           <Plus className="h-4 w-4" />
@@ -47,30 +63,39 @@ export function QuestionBuilder({ quizId, questions }: { quizId: string; questio
         />
       ) : (
         <div className="space-y-3">
-          {sorted.map((question, index) => (
-            <div
-              key={question.id}
-              className="flex items-start gap-3 rounded-lg border border-border p-4"
-            >
-              <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-gray-300" />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-medium text-muted">Q{index + 1}</span>
-                  <Badge variant="outline">
-                    {{ mcq: "Single Choice", single_choice: "Single Choice", multiple_choice: "Multiple Choice", short_answer: "Short Answer", open_ended: "Open Ended" }[question.question_type]}
-                  </Badge>
-                  <Badge variant="muted">{question.points} pt{question.points === 1 ? "" : "s"}</Badge>
-                </div>
-                <p className="mt-1.5 text-sm text-foreground">{question.question_text}</p>
-                {(question.question_type === "mcq" || question.question_type === "single_choice" || question.question_type === "multiple_choice") && question.options && (
-                  <div className="mt-2.5 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                    {[...question.options]
-                      .sort((a, b) => a.sort_order - b.sort_order)
-                      .map((option, i) => (
+          {sorted.map((question, index) => {
+            const isChoice =
+              question.type === "single_choice" || question.type === "multiple_choice";
+            const choiceOptions = [...(question.options ?? [])]
+              .filter((o) => isChoice)
+              .sort((a, b) => a.sort_order - b.sort_order);
+            const shortAnswer =
+              question.type === "short_answer"
+                ? question.options?.find((o) => o.is_correct)?.option_text
+                : null;
+
+            return (
+              <div
+                key={question.id}
+                className="flex items-start gap-3 rounded-lg border border-border p-4"
+              >
+                <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-gray-300" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium text-muted">Q{index + 1}</span>
+                    <Badge variant="outline">{TYPE_LABELS[question.type] ?? question.type}</Badge>
+                    <Badge variant="muted">
+                      {question.points} pt{Number(question.points) === 1 ? "" : "s"}
+                    </Badge>
+                  </div>
+                  <p className="mt-1.5 text-sm text-foreground">{question.question}</p>
+                  {isChoice && choiceOptions.length > 0 && (
+                    <div className="mt-2.5 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                      {choiceOptions.map((option, i) => (
                         <div
-                          key={option.id}
+                          key={option.id ?? `${question.id}-${i}`}
                           className={`rounded-md border px-2.5 py-1.5 text-xs ${
-                            (question.question_type === "multiple_choice" ? question.correct_answers.includes(option.option_text) : option.option_text === question.correct_answer)
+                            option.is_correct
                               ? "border-green-200 bg-green-50 text-success"
                               : "border-border text-muted"
                           }`}
@@ -78,41 +103,42 @@ export function QuestionBuilder({ quizId, questions }: { quizId: string; questio
                           {String.fromCharCode(65 + i)}. {option.option_text}
                         </div>
                       ))}
-                  </div>
-                )}
-               {(question.question_type === "short_answer" ||
-  question.question_type === "open_ended") && (
-    <p className="mt-2 text-xs text-muted">
-        {question.question_type === "short_answer"
-            ? "Correct answer:"
-            : "Reference answer:"}
-
-        <span className="text-foreground ml-1">
-            {question.correct_answer || "None"}
-        </span>
-    </p>
-)}
+                    </div>
+                  )}
+                  {question.type === "short_answer" && (
+                    <p className="mt-2 text-xs text-muted">
+                      Correct answer:{" "}
+                      <span className="ml-1 text-foreground">{shortAnswer || "None"}</span>
+                    </p>
+                  )}
+                  {question.type === "open_ended" && (
+                    <p className="mt-2 text-xs text-muted">Open-ended · not auto-graded</p>
+                  )}
+                  {question.explanation ? (
+                    <p className="mt-2 text-xs text-muted">Explanation: {question.explanation}</p>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <Button variant="ghost" size="icon" onClick={() => setEditing(question)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <ConfirmDialog
+                    trigger={
+                      <Button variant="ghost" size="icon">
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    }
+                    title="Delete question"
+                    description="This will permanently remove this question from the quiz."
+                    onConfirm={async () => {
+                      await deleteQuestion(question.id, quizId);
+                      router.refresh();
+                    }}
+                  />
+                </div>
               </div>
-              <div className="flex shrink-0 gap-1">
-                <Button variant="ghost" size="icon" onClick={() => setEditing(question)}>
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <ConfirmDialog
-                  trigger={
-                    <Button variant="ghost" size="icon">
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  }
-                  title="Delete question"
-                  description="This will permanently remove this question from the quiz."
-                  onConfirm={async () => {
-                    await deleteQuestion(question.id, quizId);
-                    router.refresh();
-                  }}
-                />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

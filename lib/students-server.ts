@@ -1,19 +1,85 @@
-import { cookies } from "next/headers";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { STUDENT_SESSION_COOKIE, verifyStudentSessionCookieValue } from "@/lib/student-session";
-import type { Student } from "@/lib/types";
+import { createClient } from "@/lib/supabase/server";
+import type { StudentWithProfile } from "@/lib/types";
 
-// Reads the signed student cookie and loads the matching row. Bypasses RLS
-// deliberately — students never hold a Supabase Auth session, so there's no
-// "authenticated" context for RLS to key off of (see 0005_students.sql).
-export async function getCurrentStudent(): Promise<Student | null> {
-  const cookieStore = await cookies();
-  const studentId = await verifyStudentSessionCookieValue(
-    cookieStore.get(STUDENT_SESSION_COOKIE)?.value
-  );
-  if (!studentId) return null;
+export async function getCurrentStudent(): Promise<StudentWithProfile | null> {
+  const supabase = await createClient();
 
-  const supabase = createAdminClient();
-  const { data } = await supabase.from("students").select("*").eq("id", studentId).single();
-  return (data as Student) ?? null;
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return null;
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select(`
+      id,
+      email,
+      first_name,
+      last_name,
+      role
+    `)
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profileError || !profile || profile.role !== "student") {
+    return null;
+  }
+
+  const { data: student, error: studentError } = await supabase
+    .from("students")
+    .select(`
+      id,
+      student_code,
+      phone,
+      active,
+      created_at,
+      updated_at
+    `)
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (studentError || !student || !student.active) {
+    return null;
+  }
+
+  const { data: memberships } = await supabase
+    .from("class_students")
+    .select(`
+      class_id,
+      classes (
+        id,
+        name,
+        active
+      )
+    `)
+    .eq("student_id", user.id);
+
+  const classes = (memberships ?? [])
+    .flatMap((row) => {
+      const raw = row.classes as
+        | { id: string; name: string; active: boolean }
+        | { id: string; name: string; active: boolean }[]
+        | null;
+      if (!raw) return [];
+      return Array.isArray(raw) ? raw : [raw];
+    })
+    .filter((cls) => Boolean(cls?.id));
+
+  const fullName =
+    [profile.first_name, profile.last_name].filter(Boolean).join(" ") || "Student";
+
+  return {
+    ...student,
+    name: fullName,
+    email: profile.email,
+    first_name: profile.first_name,
+    last_name: profile.last_name,
+    classes,
+    class_ids: classes.map((c) => c.id),
+    batch_name: classes.map((c) => c.name).join(", "),
+  };
 }

@@ -14,27 +14,37 @@ interface QuestionCardProps {
 }
 
 export function QuestionCard({ question, index, total, value, onChange }: QuestionCardProps) {
+  const isChoice = question.type === "single_choice" || question.type === "multiple_choice";
+
   return (
     <div className="mx-auto w-full max-w-[768px]">
       <p className="text-xs font-medium text-muted">
         Question {index + 1} of {total}
       </p>
       <h2 className="mt-2 text-xl font-semibold leading-snug text-foreground sm:text-2xl">
-        {question.question_text}
+        {question.question}
       </h2>
 
       <div className="mt-8">
-        {question.question_type === "mcq" || question.question_type === "single_choice" || question.question_type === "multiple_choice" ? (
+        {isChoice ? (
           <div className="grid grid-cols-1 gap-3">
             {question.options.map((option, i) => {
-              const selected = Array.isArray(value) ? value.includes(option.option_text) : value === option.option_text;
+              const selected = Array.isArray(value)
+                ? value.includes(option.id)
+                : value === option.id;
               return (
                 <button
                   key={option.id}
                   type="button"
-                  onClick={() => onChange(question.question_type === "multiple_choice"
-                    ? (selected ? (Array.isArray(value) ? value.filter((item) => item !== option.option_text) : []) : [...(Array.isArray(value) ? value : []), option.option_text])
-                    : option.option_text)}
+                  onClick={() =>
+                    onChange(
+                      question.type === "multiple_choice"
+                        ? selected
+                          ? (Array.isArray(value) ? value.filter((item) => item !== option.id) : [])
+                          : [...(Array.isArray(value) ? value : []), option.id]
+                        : option.id
+                    )
+                  }
                   className={cn(
                     "flex items-center gap-3 rounded-lg border px-4 py-3.5 text-left text-sm transition-colors",
                     selected
@@ -59,8 +69,8 @@ export function QuestionCard({ question, index, total, value, onChange }: Questi
           <Textarea
             value={Array.isArray(value) ? value.join(", ") : value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder={question.question_type === "open_ended" ? "Write your response" : "Type your answer"}
-            className={question.question_type === "open_ended" ? "min-h-52 text-base" : "min-h-32 text-base"}
+            placeholder={question.type === "open_ended" ? "Write your response" : "Type your answer"}
+            className={question.type === "open_ended" ? "min-h-52 text-base" : "min-h-32 text-base"}
             autoFocus
           />
         )}

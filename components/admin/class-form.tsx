@@ -3,22 +3,22 @@
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { batchSchema, type BatchInput } from "@/lib/validations/batch";
+import { classSchema, type ClassInput } from "@/lib/validations/class";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import type { Batch } from "@/lib/types";
-import type { ActionResult } from "@/lib/actions/batches";
+import type { Class } from "@/lib/types";
+import type { ActionResult } from "@/lib/actions/types";
 
-interface BatchFormProps {
-  batch?: Batch;
+interface ClassFormProps {
+  classItem?: Class;
   onSubmit: (formData: FormData) => Promise<ActionResult>;
   onSuccess: () => void;
 }
 
-export function BatchForm({ batch, onSubmit, onSuccess }: BatchFormProps) {
+export function ClassForm({ classItem, onSubmit, onSuccess }: ClassFormProps) {
   const [isPending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -28,18 +28,18 @@ export function BatchForm({ batch, onSubmit, onSuccess }: BatchFormProps) {
     watch,
     setValue,
     formState: { errors },
-  } = useForm<BatchInput>({
-    resolver: zodResolver(batchSchema),
+  } = useForm<ClassInput>({
+    resolver: zodResolver(classSchema),
     defaultValues: {
-      name: batch?.name ?? "",
-      description: batch?.description ?? "",
-      active: batch?.active ?? true,
+      name: classItem?.name ?? "",
+      description: classItem?.description ?? "",
+      active: classItem?.active ?? true,
     },
   });
 
   const active = watch("active");
 
-  const handle = (data: BatchInput) => {
+  const handle = (data: ClassInput) => {
     setServerError(null);
     const formData = new FormData();
     formData.set("name", data.name);
@@ -66,18 +66,24 @@ export function BatchForm({ batch, onSubmit, onSuccess }: BatchFormProps) {
 
       <div>
         <Label htmlFor="description">Description</Label>
-        <Textarea id="description" placeholder="Optional context for this batch" {...register("description")} />
+        <Textarea
+          id="description"
+          placeholder="Optional context for this class"
+          {...register("description")}
+        />
       </div>
 
       <div className="flex items-center justify-between rounded-md border border-border px-3 py-2.5">
-        <Label htmlFor="active" className="mb-0">Active</Label>
+        <Label htmlFor="active" className="mb-0">
+          Active
+        </Label>
         <Switch id="active" checked={active} onCheckedChange={(v) => setValue("active", v)} />
       </div>
 
       {serverError && <p className="text-xs text-destructive">{serverError}</p>}
 
       <Button type="submit" className="w-full" disabled={isPending}>
-        {isPending ? "Saving..." : batch ? "Save changes" : "Create batch"}
+        {isPending ? "Saving..." : classItem ? "Save changes" : "Create class"}
       </Button>
     </form>
   );

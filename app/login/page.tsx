@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, Suspense } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { loginSchema, type LoginInput } from "@/lib/validations/auth";
@@ -8,10 +8,13 @@ import { login } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useSearchParams } from "next/navigation";
 
 export default function LoginPage() {
   const [isPending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirect");
 
   const {
     register,
@@ -24,6 +27,10 @@ export default function LoginPage() {
     const formData = new FormData();
     formData.set("email", data.email);
     formData.set("password", data.password);
+
+    if (redirectTo) {
+      formData.set("redirect_to", redirectTo);
+    }
 
     startTransition(async () => {
       const result = await login(formData);

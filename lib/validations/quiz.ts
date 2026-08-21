@@ -11,9 +11,3 @@ export const quizSchema = z.object({
 });
 
 export type QuizInput = z.infer<typeof quizSchema>;
-
-export const batchSelectionSchema = z.object({
-  batch_names: z.array(z.string().trim().min(1)).min(1, "Select at least one batch"),
-});
-
-export type BatchSelectionInput = z.infer<typeof batchSelectionSchema>;

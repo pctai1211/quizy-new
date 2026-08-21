@@ -27,9 +27,15 @@ import { StudentForm } from "@/components/admin/student-form";
 import { StudentsImportDialog } from "@/components/admin/students-import-dialog";
 import { createStudent, updateStudent, deleteStudent } from "@/lib/actions/students";
 import { formatDate } from "@/lib/utils";
-import type { Student } from "@/lib/types";
+import type { Class, Student } from "@/lib/types";
 
-export function StudentsTable({ students }: { students: Student[] }) {
+export function StudentsTable({
+  students,
+  classes,
+}: {
+  students: Student[];
+  classes: Class[];
+}) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Student | null>(null);
@@ -38,21 +44,27 @@ export function StudentsTable({ students }: { students: Student[] }) {
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return students;
-    return students.filter(
-      (s) =>
-        s.name.toLowerCase().includes(query) ||
-        s.email.toLowerCase().includes(query) ||
-        s.batch_name.toLowerCase().includes(query)
-    );
+    return students.filter((s) => {
+      const name = (s.name ?? "").toLowerCase();
+      const email = (s.email ?? "").toLowerCase();
+      const classText = (s.classes ?? []).map((c) => c.name).join(" ").toLowerCase();
+      const code = (s.student_code ?? "").toLowerCase();
+      return (
+        name.includes(query) ||
+        email.includes(query) ||
+        classText.includes(query) ||
+        code.includes(query)
+      );
+    });
   }, [students, search]);
 
   return (
     <div>
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative sm:w-64">
+        <div className="relative sm:w-72">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           <Input
-            placeholder="Search name, email, or batch"
+            placeholder="Search name, email, or class"
             className="pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -71,7 +83,7 @@ export function StudentsTable({ students }: { students: Student[] }) {
         <EmptyState
           icon={GraduationCap}
           title="No students yet"
-          description="Import a CSV of students (name, email, batch) or add one manually."
+          description="Add a student with email/password, or import a CSV. Enroll them in one or more classes."
           action={<Button onClick={() => setCreateOpen(true)}>Add student</Button>}
         />
       ) : filtered.length === 0 ? (
@@ -83,7 +95,8 @@ export function StudentsTable({ students }: { students: Student[] }) {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Batch</TableHead>
+                <TableHead>Classes</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Added</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -94,7 +107,22 @@ export function StudentsTable({ students }: { students: Student[] }) {
                   <TableCell className="font-medium">{student.name}</TableCell>
                   <TableCell className="text-muted">{student.email}</TableCell>
                   <TableCell>
-                    <Badge variant="outline">{student.batch_name}</Badge>
+                    <div className="flex flex-wrap gap-1">
+                      {(student.classes ?? []).length === 0 ? (
+                        <span className="text-muted">—</span>
+                      ) : (
+                        (student.classes ?? []).map((c) => (
+                          <Badge key={c.id} variant="outline">
+                            {c.name}
+                          </Badge>
+                        ))
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={student.active ? "success" : "muted"}>
+                      {student.active ? "Active" : "Inactive"}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-muted">{formatDate(student.created_at)}</TableCell>
                   <TableCell>
@@ -109,7 +137,7 @@ export function StudentsTable({ students }: { students: Student[] }) {
                           </Button>
                         }
                         title="Remove student"
-                        description={`This will remove "${student.name}" and revoke their dashboard access.`}
+                        description={`This will remove "${student.name}" and revoke their login access.`}
                         onConfirm={async () => {
                           await deleteStudent(student.id);
                           router.refresh();
@@ -125,12 +153,15 @@ export function StudentsTable({ students }: { students: Student[] }) {
       )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add student</DialogTitle>
-            <DialogDescription>They&apos;ll be able to sign in with this email right away.</DialogDescription>
+            <DialogDescription>
+              Creates a login account. Assign one or more classes below.
+            </DialogDescription>
           </DialogHeader>
           <StudentForm
+            classes={classes}
             onSubmit={createStudent}
             onSuccess={() => {
               setCreateOpen(false);
@@ -141,14 +172,15 @@ export function StudentsTable({ students }: { students: Student[] }) {
       </Dialog>
 
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit student</DialogTitle>
-            <DialogDescription>Update this student&apos;s details.</DialogDescription>
+            <DialogDescription>Update profile, status, and class membership.</DialogDescription>
           </DialogHeader>
           {editing && (
             <StudentForm
               student={editing}
+              classes={classes}
               onSubmit={(formData) => updateStudent(editing.id, formData)}
               onSuccess={() => {
                 setEditing(null);

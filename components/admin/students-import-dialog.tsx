@@ -10,10 +10,8 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { importStudents, type ImportResult } from "@/lib/actions/students";
+import { importStudents, type ImportResult, type ImportRow } from "@/lib/actions/students";
 
-// Minimal RFC 4180 CSV parser (quoted fields, escaped "" quotes, \r\n or \n).
-// Avoids pulling in a dependency for a 3-column file.
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
@@ -61,23 +59,37 @@ function parseCsv(text: string): string[][] {
   return rows.filter((r) => r.some((cell) => cell.trim() !== ""));
 }
 
-const HEADER_ALIASES: Record<string, "name" | "email" | "batch_name"> = {
+type ColumnKey =
+  | "name"
+  | "first_name"
+  | "last_name"
+  | "email"
+  | "classes"
+  | "password"
+  | "student_code"
+  | "phone";
+
+const HEADER_ALIASES: Record<string, ColumnKey> = {
   name: "name",
   "student name": "name",
-  "student_name": "name",
+  student_name: "name",
+  first_name: "first_name",
+  "first name": "first_name",
+  last_name: "last_name",
+  "last name": "last_name",
   email: "email",
   "student email": "email",
-  "student_email": "email",
-  batch: "batch_name",
-  batch_name: "batch_name",
-  "batch name": "batch_name",
+  student_email: "email",
+  classes: "classes",
+  class: "classes",
+  batch: "classes",
+  batch_name: "classes",
+  "batch name": "classes",
+  password: "password",
+  student_code: "student_code",
+  code: "student_code",
+  phone: "phone",
 };
-
-interface ParsedRow {
-  name: string;
-  email: string;
-  batch_name: string;
-}
 
 export function StudentsImportDialog({ onSuccess }: { onSuccess: () => void }) {
   const [open, setOpen] = useState(false);
@@ -108,22 +120,51 @@ export function StudentsImportDialog({ onSuccess }: { onSuccess: () => void }) {
     }
 
     const header = (table[0] ?? []).map((cell) => cell.trim().toLowerCase());
-    const columnIndex: Partial<Record<"name" | "email" | "batch_name", number>> = {};
+    const columnIndex: Partial<Record<ColumnKey, number>> = {};
     header.forEach((cell, index) => {
       const key = HEADER_ALIASES[cell];
       if (key) columnIndex[key] = index;
     });
 
-    const missing = (["name", "email", "batch_name"] as const).filter((key) => columnIndex[key] === undefined);
-    if (missing.length > 0) {
-      setParseError(`Missing column(s): ${missing.join(", ")}. Expected headers: name, email, batch.`);
+    if (columnIndex.email === undefined) {
+      setParseError("Missing column: email.");
       return;
     }
 
-    const rows: ParsedRow[] = table.slice(1).map((cells) => ({
-      name: (cells[columnIndex.name!] ?? "").trim(),
+    const hasName =
+      columnIndex.name !== undefined ||
+      (columnIndex.first_name !== undefined && columnIndex.last_name !== undefined);
+
+    if (!hasName) {
+      setParseError("Provide either name, or first_name + last_name columns.");
+      return;
+    }
+
+    const rows: ImportRow[] = table.slice(1).map((cells) => ({
+      name: columnIndex.name !== undefined ? (cells[columnIndex.name] ?? "").trim() : undefined,
+      first_name:
+        columnIndex.first_name !== undefined
+          ? (cells[columnIndex.first_name] ?? "").trim()
+          : undefined,
+      last_name:
+        columnIndex.last_name !== undefined
+          ? (cells[columnIndex.last_name] ?? "").trim()
+          : undefined,
       email: (cells[columnIndex.email!] ?? "").trim(),
-      batch_name: (cells[columnIndex.batch_name!] ?? "").trim(),
+      password:
+        columnIndex.password !== undefined
+          ? (cells[columnIndex.password] ?? "").trim()
+          : undefined,
+      student_code:
+        columnIndex.student_code !== undefined
+          ? (cells[columnIndex.student_code] ?? "").trim()
+          : undefined,
+      phone:
+        columnIndex.phone !== undefined ? (cells[columnIndex.phone] ?? "").trim() : undefined,
+      classes:
+        columnIndex.classes !== undefined
+          ? (cells[columnIndex.classes] ?? "").trim()
+          : undefined,
     }));
 
     startTransition(async () => {
@@ -151,10 +192,10 @@ export function StudentsImportDialog({ onSuccess }: { onSuccess: () => void }) {
           <DialogHeader>
             <DialogTitle>Import students</DialogTitle>
             <DialogDescription>
-              Upload a CSV with <span className="font-medium text-foreground">name</span>,{" "}
-              <span className="font-medium text-foreground">email</span>, and{" "}
-              <span className="font-medium text-foreground">batch</span> columns. Existing students
-              (matched by email) are updated; new emails are added.
+              CSV needs <span className="font-medium text-foreground">email</span> plus{" "}
+              <span className="font-medium text-foreground">name</span> (or first/last). Optional:{" "}
+              <span className="font-medium text-foreground">classes</span> (comma-separated names),
+              password, student_code, phone. Existing emails are updated.
             </DialogDescription>
           </DialogHeader>
 
@@ -179,14 +220,17 @@ export function StudentsImportDialog({ onSuccess }: { onSuccess: () => void }) {
             {result && (
               <div className="rounded-md border border-border p-3 text-xs">
                 {result.success ? (
-                  <p className="text-success">Imported {result.imported} student{result.imported === 1 ? "" : "s"}.</p>
+                  <p className="text-success">
+                    Imported {result.imported} student{result.imported === 1 ? "" : "s"}.
+                  </p>
                 ) : (
                   <p className="text-destructive">{result.error}</p>
                 )}
                 {result.skipped.length > 0 && (
                   <div className="mt-2">
                     <p className="font-medium text-muted">
-                      Skipped {result.skipped.length} row{result.skipped.length === 1 ? "" : "s"}:
+                      Skipped {result.skipped.length} row
+                      {result.skipped.length === 1 ? "" : "s"}:
                     </p>
                     <ul className="mt-1 max-h-32 space-y-0.5 overflow-y-auto text-muted">
                       {result.skipped.slice(0, 20).map((s, i) => (
