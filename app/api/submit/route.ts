@@ -119,7 +119,7 @@ export async function POST(request: Request) {
         attempt_number: nextAttemptNumber,
         status: "in_progress",
       })
-      .select("id")
+      .select("id, attempt_number, status")
       .single();
 
     if (attemptError || !created) {
