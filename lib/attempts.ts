@@ -26,7 +26,7 @@ export function answersToState(
     if (optionIds.length > 1) {
       state[row.question_id] = optionIds;
     } else if (optionIds.length === 1) {
-      state[row.question_id] = optionIds[0];
+      state[row.question_id] = optionIds[0] as string;
     } else if (row.text_answer) {
       state[row.question_id] = row.text_answer;
     }
