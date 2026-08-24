@@ -36,7 +36,7 @@ export default async function AdminLayout({
     <div className="flex min-h-screen bg-white">
       <AdminSidebar email={user.email ?? ""} />
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col max-h-[100vh] overflow-y-auto">
         <AdminMobileNav />
 
         <main className="flex-1 px-4 py-8 sm:px-8 md:px-10 md:py-10">
