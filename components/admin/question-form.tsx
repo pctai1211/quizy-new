@@ -24,6 +24,8 @@ import {
 } from "@/lib/actions/questions";
 import type { Question, QuestionType } from "@/lib/types";
 import type { ActionResult } from "@/lib/actions/types";
+import { uploadQuestionImage, deleteQuestionImage } from "@/lib/supabase/upload-question-image";
+import { ImagePlus, X as XIcon } from "lucide-react";
 
 interface QuestionFormProps {
   quizId: string;
@@ -40,6 +42,39 @@ export function QuestionForm({
 }: QuestionFormProps) {
   const [isPending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(question?.image_url ?? null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setUploadError("Please select an image file.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError("Maximum image size: 5MB");
+      return;
+    }
+
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const url = await uploadQuestionImage(file);
+      setImageUrl(url);
+    } catch {
+      setUploadError("Photo upload failed; please try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemoveImage = async () => {
+    if (imageUrl) await deleteQuestionImage(imageUrl);
+    setImageUrl(null);
+  };
 
   const choiceOptions =
     question?.type === "single_choice" || question?.type === "multiple_choice"
@@ -67,13 +102,13 @@ export function QuestionForm({
       explanation: question?.explanation ?? "",
       options: choiceOptions.length
         ? choiceOptions.map((option) => ({
-            option_text: option.option_text,
-            is_correct: option.is_correct,
-          }))
+          option_text: option.option_text,
+          is_correct: option.is_correct,
+        }))
         : [
-            { option_text: "", is_correct: true },
-            { option_text: "", is_correct: false },
-          ],
+          { option_text: "", is_correct: true },
+          { option_text: "", is_correct: false },
+        ],
       correct_answer: shortAnswer,
     },
   });
@@ -114,11 +149,12 @@ export function QuestionForm({
       points: data.points,
       sort_order: question?.sort_order ?? nextSortOrder,
       explanation: data.explanation || null,
+      image_url: imageUrl,
       options: isChoiceQuestion
         ? (data.options ?? []).map((option) => ({
-            option_text: option.option_text ?? "",
-            is_correct: Boolean(option.is_correct),
-          }))
+          option_text: option.option_text ?? "",
+          is_correct: Boolean(option.is_correct),
+        }))
         : [],
       correct_answer: data.type === "short_answer" ? data.correct_answer ?? "" : "",
     };
@@ -140,6 +176,38 @@ export function QuestionForm({
         {errors.question && (
           <p className="mt-1.5 text-xs text-destructive">{errors.question.message}</p>
         )}
+      </div>
+      <div>
+        <Label>Image (optional)</Label>
+        {imageUrl ? (
+          <div className="relative mt-1.5 w-max">
+            <img
+              src={imageUrl}
+              alt="Question"
+              className="max-h-48 rounded-md border border-border object-contain"
+            />
+            <button
+              type="button"
+              onClick={handleRemoveImage}
+              className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white border border-border shadow-sm"
+            >
+              <XIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <label className="mt-1.5 flex h-24 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border text-xs text-muted hover:bg-gray-50">
+            <ImagePlus className="h-4 w-4" />
+            {uploading ? "Uploading..." : "Choose image"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageSelect}
+              disabled={uploading}
+            />
+          </label>
+        )}
+        {uploadError && <p className="mt-1.5 text-xs text-destructive">{uploadError}</p>}
       </div>
 
       <div className="grid grid-cols-2 gap-4">

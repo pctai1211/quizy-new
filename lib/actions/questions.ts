@@ -13,6 +13,7 @@ export interface QuestionFormPayload {
   points: number;
   sort_order: number;
   explanation?: string | null;
+  image_url?: string | null;
   options: Array<{ option_text: string; is_correct: boolean }>;
   correct_answer?: string;
 }
@@ -57,6 +58,7 @@ function parsePayload(payload: QuestionFormPayload) {
     explanation: payload.explanation ?? "",
     options: payload.options,
     correct_answer: payload.correct_answer,
+    image_url: payload.image_url ?? "",
   });
 }
 
@@ -73,6 +75,7 @@ export async function createQuestion(payload: QuestionFormPayload): Promise<Acti
     .insert({
       quiz_id: payload.quiz_id,
       question: parsed.data.question,
+      image_url: parsed.data.image_url,
       type: parsed.data.type,
       points: parsed.data.points,
       sort_order: payload.sort_order,
@@ -86,6 +89,7 @@ export async function createQuestion(payload: QuestionFormPayload): Promise<Acti
   const rows = optionRows(question.id, {
     ...payload,
     question: parsed.data.question,
+    image_url: parsed.data.image_url,
     type: parsed.data.type,
     points: parsed.data.points,
     explanation: parsed.data.explanation || null,
@@ -116,6 +120,7 @@ export async function updateQuestion(
     .from("questions")
     .update({
       question: parsed.data.question,
+      image_url: parsed.data.image_url,
       type: parsed.data.type,
       points: parsed.data.points,
       explanation: parsed.data.explanation || null,

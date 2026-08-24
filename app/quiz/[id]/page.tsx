@@ -48,7 +48,7 @@ export default async function QuizPage({
     const admin = createAdminClient();
     const { data: questionRows } = await admin
       .from("questions")
-      .select("id, question, type, points, sort_order, options:question_options(id, option_text, sort_order)")
+      .select("id, question, image_url, type, points, sort_order, options:question_options(id, option_text, sort_order)")
       .eq("quiz_id", id)
       .order("sort_order", { ascending: true });
 
@@ -119,7 +119,7 @@ export default async function QuizPage({
   const admin = createAdminClient();
   const { data: questionRows, error } = await admin
     .from("questions")
-    .select("id, question, type, points, sort_order, options:question_options(id, option_text, sort_order)")
+    .select("id, question, image_url, type, points, sort_order, options:question_options(id, option_text, sort_order)")
     .eq("quiz_id", id)
     .order("sort_order", { ascending: true });
   console.log(error)

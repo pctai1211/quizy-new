@@ -89,16 +89,22 @@ export function QuestionBuilder({
                     </Badge>
                   </div>
                   <p className="mt-1.5 text-sm text-foreground">{question.question}</p>
+                  {question.image_url && (
+                    <img
+                      src={question.image_url}
+                      alt=""
+                      className="mt-2.5 max-h-40 rounded-md border border-border object-contain"
+                    />
+                  )}
                   {isChoice && choiceOptions.length > 0 && (
                     <div className="mt-2.5 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                       {choiceOptions.map((option, i) => (
                         <div
                           key={option.id ?? `${question.id}-${i}`}
-                          className={`rounded-md border px-2.5 py-1.5 text-xs ${
-                            option.is_correct
-                              ? "border-green-200 bg-green-50 text-success"
-                              : "border-border text-muted"
-                          }`}
+                          className={`rounded-md border px-2.5 py-1.5 text-xs ${option.is_correct
+                            ? "border-green-200 bg-green-50 text-success"
+                            : "border-border text-muted"
+                            }`}
                         >
                           {String.fromCharCode(65 + i)}. {option.option_text}
                         </div>
@@ -160,7 +166,7 @@ export function QuestionBuilder({
       </Dialog>
 
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[95vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit question</DialogTitle>
             <DialogDescription>Update the question details.</DialogDescription>

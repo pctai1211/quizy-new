@@ -13,6 +13,7 @@ export const questionSchema = z
     explanation: z.string().trim().max(2000).optional().or(z.literal("")),
     options: z.array(optionSchema).optional(),
     correct_answer: z.string().trim().optional(),
+    image_url: z.string().url().nullable().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === "single_choice" || data.type === "multiple_choice") {

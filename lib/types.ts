@@ -122,6 +122,7 @@ export interface Question {
   sort_order: number;
   explanation?: string | null;
   options?: QuestionOption[];
+  image_url?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -139,6 +140,7 @@ export interface PublicQuestion {
   id: string;
   quiz_id?: string;
   question: string;
+  image_url?: string;
   type: QuestionType;
   points: number;
   sort_order: number;

@@ -24,6 +24,13 @@ export function QuestionCard({ question, index, total, value, onChange }: Questi
       <h2 className="mt-2 text-xl font-semibold leading-snug text-foreground sm:text-2xl">
         {question.question}
       </h2>
+      {question.image_url && (
+        <img
+          src={question.image_url}
+          alt=""
+          className="mt-4 max-h-80 w-full rounded-lg border border-border object-contain"
+        />
+      )}
 
       <div className="mt-8">
         {isChoice ? (
